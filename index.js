@@ -35,7 +35,7 @@ function getConfig() {
     ship: "zod",                            // Local development ship (without ~)
     code: "lidlut-tabwed-pillex-ridrup",    // Default +code
     host: "localhost",                      // Urbit host
-    port: "80",                             // Urbit port
+    port: "8080",                           // Urbit port (commonly 8080 for local development)
   };
 
   // Get configuration from environment or defaults
@@ -104,49 +104,95 @@ Urbit.prototype.connect = async function patchedConnect() {
  */
 async function sendDm(api, fromShip, toShip, text) {
   console.log(`Sending DM to ${toShip}...`);
-
-  const story = [
-    {
-      inline: [text],
-    },
-  ];
-
-  const sentAt = Date.now();
-  const idUd = formatUd(unixToDa(sentAt).toString());
-  const id = `${fromShip}/${idUd}`;
-
-  const delta = {
-    add: {
-      memo: {
-        content: story,
-        author: fromShip,
-        sent: sentAt,
+  
+  try {
+    // Verify API connection is still active with a more reliable method
+    console.log("Verifying connection status...");
+    try {
+      // Try to use ship's name as a basic health check
+      await api.getOurName();
+      console.log("Connection verified");
+    } catch (connErr) {
+      console.error("Connection check failed:", connErr);
+      console.log("Attempting to reconnect...");
+      
+      // Re-authenticate
+      try {
+        await api.connect();
+        console.log("Successfully reconnected");
+      } catch (reconnErr) {
+        console.error("Reconnection failed:", reconnErr);
+        throw new Error("Connection to ship lost and reconnection failed");
+      }
+    }
+  
+    const story = [
+      {
+        inline: [text],
       },
-      kind: null,
-      time: null,
-    },
-  };
+    ];
 
-  const action = {
-    ship: toShip,
-    diff: {
-      id,
-      delta,
-    },
-  };
+    const sentAt = Date.now();
+    const idUd = formatUd(unixToDa(sentAt).toString());
+    const id = `${fromShip}/${idUd}`;
 
-  await api.poke({
-    app: "chat",
-    mark: "chat-dm-action",
-    json: action,
-  });
-  console.log("DM sent!");
-  // Return message and recipient in the content array format FastMCP expects
-  return {
-    content: [
-      { type: "text", text: `Message sent to ${toShip}` }
-    ]
-  };
+    const delta = {
+      add: {
+        memo: {
+          content: story,
+          author: fromShip,
+          sent: sentAt,
+        },
+        kind: null,
+        time: null,
+      },
+    };
+
+    const action = {
+      ship: toShip,
+      diff: {
+        id,
+        delta,
+      },
+    };
+    
+    console.log(`Sending message via poke to ${toShip}...`);
+    
+    await api.poke({
+      app: "chat",
+      mark: "chat-dm-action",
+      json: action,
+      onError: (e) => {
+        console.error("Poke error:", e);
+        throw e;
+      }
+    });
+    
+    console.log("DM sent successfully!");
+    // Return message and recipient in the content array format FastMCP expects
+    return {
+      content: [
+        { type: "text", text: `Message sent to ${toShip}` }
+      ]
+    };
+  } catch (error) {
+    console.error("Error sending DM:", error);
+    let errorMessage = error.message || "Unknown error occurred";
+    
+    if (errorMessage.includes("PUT channel")) {
+      errorMessage = `Failed to communicate with the ship. Please verify:
+1. Your ship is still running at ${api.url}
+2. You have the 'chat' app installed and running
+3. The recipient (${toShip}) is valid and can receive DMs
+4. Try restarting the server if the issue persists`;
+    }
+    
+    return { 
+      content: [
+        { type: "text", text: `Error: ${errorMessage}` }
+      ]
+    };
+  }
 }
 
 /**
@@ -157,6 +203,7 @@ async function startMcpServer() {
   const shipName = `~${config.ship}`;
   
   console.log(`Setting up MCP server for Tlon at ${config.url}`);
+  console.log(`Authenticating as ${shipName}`);
   
   let api;
   try {
@@ -166,9 +213,22 @@ async function startMcpServer() {
       code: config.code,
       verbose: true,
     });
+    
+    // Set a longer timeout value for API calls
+    api.requestTimeout = 30000; // 30 seconds
+    
     console.log("Successfully authenticated to ship");
   } catch (error) {
     console.error("Failed to authenticate to ship:", error);
+    if (error.message && error.message.includes("PUT channel")) {
+      console.error("-----------------------------------------------------");
+      console.error("Authentication Error: Failed to PUT channel");
+      console.error("Check the following:");
+      console.error(`1. Is your Urbit ship (${shipName}) running at ${config.url}?`);
+      console.error(`2. Is the +code (${config.code}) correct?`);
+      console.error(`3. Try accessing ${config.url} in a browser to verify connectivity`);
+      console.error("-----------------------------------------------------");
+    }
     process.exit(1);
   }
 

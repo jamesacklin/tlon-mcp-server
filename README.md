@@ -32,7 +32,7 @@ Configure the server using environment variables:
 | `URBIT_SHIP` | Your Urbit ship name (without ~) | zod |
 | `URBIT_CODE` | Your Urbit +code | lidlut-tabwed-pillex-ridrup |
 | `URBIT_HOST` | Urbit host | localhost |
-| `URBIT_PORT` | Urbit port | 80 |
+| `URBIT_PORT` | Urbit port | 8080 |
 | `PORT` | MCP server port (HTTP mode only) | 3001 |
 | `MCP_TRANSPORT` | Transport type (http or stdio) | stdio |
 
