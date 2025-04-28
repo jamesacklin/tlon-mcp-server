@@ -1,93 +1,85 @@
-# tlon-node
+# Tlon MCP Server
 
-A Node.js script that connects to an Urbit ship, authenticates, and interacts with various Tlon agents.
+An MCP (Model Context Protocol) server that provides tools for interacting with Tlon's Urbit services.
 
 ## Features
 
-- Connect to a running Urbit ship using HTTP API
-- Authenticate with a password/code
-- Configurable via command-line arguments, environment variables, or defaults
-- Can be used as a module in other Node.js applications
+- **send-dm tool**: Send direct messages to Urbit ships
 
-## Requirements
+## Prerequisites
 
-- Node.js 18+ (for global fetch)
-- `@urbit/http-api` and `@urbit/aura` packages
+- Node.js (v16+)
+- Access to an Urbit ship
+
+## Installation
+
+1. Clone the repository
+2. Navigate to the project directory
+3. Install dependencies:
+
+```bash
+npm install
+```
+
+## Configuration
+
+Configure the server using environment variables:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `URBIT_SHIP` | Your Urbit ship name (without ~) | zod |
+| `URBIT_CODE` | Your Urbit +code | lidlut-tabwed-pillex-ridrup |
+| `URBIT_HOST` | Urbit host | localhost |
+| `URBIT_PORT` | Urbit port | 80 |
+| `PORT` | MCP server port | 3001 |
+| `MCP_TRANSPORT` | Transport type (http or stdio) | http |
 
 ## Usage
 
-### Command-line
+### Starting the server
 
 ```bash
-# Basic usage with defaults (connects to ~zod on localhost:80 and sends a DM to ~sampel-palnet)
-node index.js
+# Start with HTTP transport
+npm run start:http
 
-# Send a DM to a recipient
-node index.js --to=sampel-palnet
+# Start with stdio transport
+npm start
 
-# Custom message
-node index.js --message="hello from node"
-
-# Connect to a different ship
-node index.js --ship=sampel-palnet --code=your-code --host=ship.tlon.network --port=443
+# Development mode with auto-reload
+npm run dev
 ```
 
-### Environment Variables
+### Setting up in Cursor
 
-Set any of these environment variables before running the script:
+Create a `.cursor/mcp.json` file in your project directory or a global configuration at `~/.cursor/mcp.json`:
 
-```bash
-# Set configuration via environment
-export URBIT_SHIP=zod
-export URBIT_CODE=lidlut-tabwed-pillex-ridrup
-export URBIT_HOST=localhost
-export URBIT_PORT=80
-export URBIT_RECIPIENT=sampel-palnet
-export URBIT_MESSAGE="Hello via environment variables"
-
-# Run with environment configuration
-node index.js
-```
-
-### As a Module
-
-```javascript
-const urbitBot = require('./path/to/bot');
-
-// Use with default or environment variable configuration
-async function sendMessage() {
-  await urbitBot.main();
-}
-
-// Or use the sendDm function directly
-async function customSend() {
-  const { Urbit } = require('@urbit/http-api');
-  
-  const api = await Urbit.authenticate({
-    ship: 'zod',
-    url: 'http://localhost:80',
-    code: 'your-code',
-  });
-  
-  await urbitBot.sendDm(api, '~zod', '~sampel-palnet', 'Custom message');
+```json
+{
+  "mcpServers": {
+    "tlon-mcp": {
+      "url": "http://localhost:3001/sse"
+    }
+  }
 }
 ```
 
-## Configuration Options
+### Using the send-dm tool
 
-| Command-line Argument | Environment Variable | Default | Description |
-|-----------------------|----------------------|---------|-------------|
-| `--ship=VALUE` | `URBIT_SHIP` | `zod` | Ship to connect to (without ~) |
-| `--code=VALUE` | `URBIT_CODE` | `lidlut-tabwed-pillex-ridrup` | Authentication code |
-| `--host=VALUE` | `URBIT_HOST` | `localhost` | Hostname of Urbit ship |
-| `--port=VALUE` | `URBIT_PORT` | `80` | Port of Urbit ship |
-| `--to=VALUE` or `--recipient=VALUE` | `URBIT_RECIPIENT` | `sampel-palnet` | Recipient ship (without ~) |
-| `--message=VALUE` or `--msg=VALUE` | `URBIT_MESSAGE` | `hi` | Message content |
+Once configured in Cursor, you can use the send-dm tool in your AI interactions:
 
-## Troubleshooting
+```
+Send a message to ~sampel-palnet on Urbit
+```
 
-- If you see "Login failed with status 400", check that your ship name and code are correct
-- If you see "Failed to PUT channel", ensure your authentication code is valid
+## Available Tools
+
+### send-dm
+
+Sends a direct message to an Urbit ship.
+
+Parameters:
+- `recipient`: The recipient's ship name (with or without ~)
+- `message`: The message text to send
 
 ## License
 

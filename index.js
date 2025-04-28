@@ -1,5 +1,7 @@
-const { Urbit } = require("@urbit/http-api");
-const { unixToDa, formatUd } = require("@urbit/aura");
+import { Urbit } from "@urbit/http-api";
+import { unixToDa, formatUd } from "@urbit/aura";
+import { FastMCP } from "fastmcp";
+import z from "zod";
 
 // Polyfill minimal browser globals needed by @urbit/http-api in Node
 if (typeof global.window === "undefined") {
@@ -14,48 +16,29 @@ if (typeof global.document === "undefined") {
 }
 
 /**
- * Process command line arguments and environment variables to get configuration
+ * Process environment variables to get configuration
  * 
- * Priority order:
- * 1. Command-line arguments
- * 2. Environment variables
- * 3. Default values
- * 
- * @returns {Object} Configuration object
+ * @returns {Object} Configuration object with default values
  */
 function getConfig() {
-  // Parse command-line arguments (format: --key=value)
-  const args = process.argv.slice(2).reduce((acc, arg) => {
-    if (arg.startsWith('--') && arg.includes('=')) {
-      const [key, value] = arg.slice(2).split('=');
-      acc[key] = value;
-    }
-    return acc;
-  }, {});
-
   // Default configuration
   const defaults = {
     ship: "zod",                            // Local development ship (without ~)
     code: "lidlut-tabwed-pillex-ridrup",    // Default +code
     host: "localhost",                      // Urbit host
     port: "80",                             // Urbit port
-    recipient: "sampel-palnet",             // DM recipient (without ~)
-    message: "hi"                           // Message content
   };
 
   // Get configuration from environment or defaults
   const config = {
-    ship: args.ship || process.env.URBIT_SHIP || defaults.ship,
-    code: args.code || process.env.URBIT_CODE || defaults.code,
-    host: args.host || process.env.URBIT_HOST || defaults.host,
-    port: args.port || process.env.URBIT_PORT || defaults.port,
-    recipient: args.to || args.recipient || process.env.URBIT_RECIPIENT || defaults.recipient,
-    message: args.message || args.msg || process.env.URBIT_MESSAGE || defaults.message
+    ship: process.env.URBIT_SHIP || defaults.ship,
+    code: process.env.URBIT_CODE || defaults.code,
+    host: process.env.URBIT_HOST || defaults.host,
+    port: process.env.URBIT_PORT || defaults.port,
   };
 
-  // Clean up ship and recipient names (remove ~ if present)
+  // Clean up ship name (remove ~ if present)
   config.ship = config.ship.replace(/^~/, '');
-  config.recipient = config.recipient.replace(/^~/, '');
 
   // Construct the full URL
   config.url = `http://${config.host}:${config.port}`;
@@ -110,7 +93,6 @@ Urbit.prototype.connect = async function patchedConnect() {
  * @param {string} text - The message text to send
  * @returns {Promise<void>}
  */
-
 async function sendDm(api, fromShip, toShip, text) {
   console.log(`Sending DM to ${toShip}...`);
 
@@ -150,59 +132,114 @@ async function sendDm(api, fromShip, toShip, text) {
     json: action,
   });
   console.log("DM sent!");
+  return { success: true, message: `Message sent to ${toShip}` };
 }
 
 /**
- * Main function that connects to an Urbit ship, sends a direct message, and cleans up
- * 
- * This function performs the following operations:
- * 1. Connects to an Urbit ship using authentication credentials
- * 2. Sends a direct message to a specified recipient
- * 3. Closes the connection channel
- * 4. Exits the process when complete
- * 
- * @async
- * @function main
- * @returns {Promise<void>}
- * @throws {Error} If connection or message sending fails
+ * Set up and run the MCP server with the send-dm tool
  */
-
-async function main() {
+async function startMcpServer() {
   const config = getConfig();
   const shipName = `~${config.ship}`;
-  const recipient = `~${config.recipient}`;
+  
+  console.log(`Setting up MCP server for Tlon's Urbit ship at ${config.url}`);
+  
+  let api;
+  try {
+    api = await Urbit.authenticate({
+      ship: config.ship,
+      url: config.url,
+      code: config.code,
+      verbose: true,
+    });
+    console.log("Successfully authenticated to Urbit ship");
+  } catch (error) {
+    console.error("Failed to authenticate to Urbit ship:", error);
+    process.exit(1);
+  }
 
-  console.log(`Connecting to Urbit ship at ${config.url}`);
-  console.log(`Will send message "${config.message}" to ${recipient}`);
-
-  const api = await Urbit.authenticate({
-    ship: config.ship,
-    url: config.url,
-    code: config.code,
-    verbose: true,
+  // Create and configure the MCP server
+  const server = new FastMCP({
+    name: "Tlon Urbit Tools", 
+    version: "1.0.0",
   });
 
-  await sendDm(api, shipName, recipient, config.message);
+  // Add send-dm tool
+  server.addTool({
+    name: "send-dm",
+    description: "Send a direct message to an Urbit ship",
+    parameters: z.object({
+      recipient: z.string().describe("Recipient ship name (with or without ~)"),
+      message: z.string().describe("Message text to send")
+    }),
+    execute: async (params) => {
+      // Clean recipient (remove ~ if present)
+      const recipient = `~${params.recipient.replace(/^~/, '')}`;
+      
+      try {
+        const result = await sendDm(api, shipName, recipient, params.message);
+        return result;
+      } catch (error) {
+        console.error("Error sending DM:", error);
+        return { 
+          success: false, 
+          error: error.message || "Unknown error occurred"
+        };
+      }
+    }
+  });
 
+  // Start the server with a basic default configuration
+  const useHttp = process.env.MCP_TRANSPORT === "http";
+  const port = parseInt(process.env.PORT || "3001");
+  
   try {
-    await api.delete();
-  } catch (e) {
-    console.warn("Warning: Failed to close channel cleanly", e);
+    if (useHttp) {
+      // Set up SSE transport according to the documentation
+      await server.start({
+        transportType: "sse",
+        sse: {
+          endpoint: "/sse",
+          port
+        }
+      });
+      console.log(`Tlon MCP server started on port ${port}, endpoint: /sse`);
+    } else {
+      // Default to stdio with no options
+      await server.start({
+        transportType: "stdio"
+      });
+      console.log("Tlon MCP server started in stdio mode");
+    }
+  } catch (error) {
+    console.error("Error starting MCP server:", error.message);
+    if (error.stack) console.error(error.stack);
+    process.exit(1);
   }
-  console.log("Done!");
-  process.exit(0);
+
+  // Graceful shutdown
+  process.on('SIGINT', async () => {
+    console.log('Shutting down MCP server...');
+    try {
+      await server.stop();
+      await api.delete();
+    } catch (e) {
+      console.warn("Warning: Failed to clean up resources", e);
+    }
+    process.exit(0);
+  });
 }
 
-// If this script is being run directly (not imported), execute main()
-if (require.main === module) {
-  main().catch((err) => {
+// Start the MCP server when this script is run directly
+if (import.meta.url === `file://${process.argv[1]}`) {
+  startMcpServer().catch((err) => {
     console.error(err);
     process.exit(1);
   });
 }
 
 // Export for use as a module in other scripts
-module.exports = {
+export {
   sendDm,
-  main
+  startMcpServer
 };
