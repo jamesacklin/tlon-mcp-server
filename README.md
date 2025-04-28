@@ -4,7 +4,7 @@ An MCP (Model Context Protocol) server that provides tools for interacting with 
 
 ## Demo
 
-https://github.com/user-attachments/assets/aa5a8279-497a-4613-a12b-a6f2b46d04b6
+https://github.com/user-attachments/assets/765847b2-df40-44c0-bfd3-c23eb609bbd8
 
 ## Features
 
