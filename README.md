@@ -1,5 +1,7 @@
 # Tlon MCP Server
 
+[![smithery badge](https://smithery.ai/badge/@jamesacklin/tlon-mcp-server)](https://smithery.ai/server/@jamesacklin/tlon-mcp-server)
+
 An MCP (Model Context Protocol) server that provides tools for interacting with Tlon agents.
 
 ## Demo
@@ -20,6 +22,15 @@ https://github.com/user-attachments/assets/765847b2-df40-44c0-bfd3-c23eb609bbd8
 
 ## Installation
 
+### Installing via Smithery
+
+To install tlon-mcp-server for Claude Desktop automatically via [Smithery](https://smithery.ai/server/@jamesacklin/tlon-mcp-server):
+
+```bash
+npx -y @smithery/cli install @jamesacklin/tlon-mcp-server --client claude
+```
+
+### Manual Installation
 1. Clone the repository
 2. Navigate to the project directory
 3. Install dependencies:
