@@ -1,15 +1,30 @@
 {
-  "name": "tlon-node",
-  "version": "0.0.1",
-  "description": "A Node.js library for interacting with Tlon",
+  "name": "tlon-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server for interacting with Tlon's Urbit services",
   "main": "index.js",
+  "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node index.js",
+    "start:http": "MCP_TRANSPORT=http node index.js",
+    "dev": "nodemon index.js",
+    "dev:http": "MCP_TRANSPORT=http nodemon index.js"
   },
-  "author": "James Acklin <james@ackl.in>",
+  "keywords": [
+    "mcp",
+    "urbit",
+    "tlon",
+    "fastmcp"
+  ],
+  "author": "",
   "license": "MIT",
   "dependencies": {
     "@urbit/aura": "^2.0.1",
-    "@urbit/http-api": "^3.2.0-dev"
+    "@urbit/http-api": "^3.2.0-dev",
+    "fastmcp": "^1.1.0",
+    "zod": "^3.21.4"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
   }
 }
