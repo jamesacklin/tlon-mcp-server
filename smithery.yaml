@@ -1,0 +1,62 @@
+# Smithery configuration file: https://smithery.ai/docs/config#smitheryyaml
+
+startCommand:
+  type: stdio
+  configSchema:
+    # JSON Schema defining the configuration options for the MCP.
+    type: object
+    required:
+      - urbitShip
+      - urbitCode
+    properties:
+      urbitShip:
+        type: string
+        default: rilfun-lidlen
+        description: Your Urbit ship name (without ~)
+      urbitCode:
+        type: string
+        default: hactes-radnup-lorbud-tinder
+        description: Your Urbit +code
+      urbitHost:
+        type: string
+        default: https://rilfun-lidlen.startram.io
+        description: Urbit host URL or hostname
+      urbitPort:
+        type: string
+        default: "443"
+        description: Urbit port
+      mcpTransport:
+        type: string
+        default: stdio
+        description: MCP transport mode
+      port:
+        type: number
+        default: 3001
+        description: MCP HTTP port if using HTTP transport
+  commandFunction:
+    # A JS function that produces the CLI command based on the given config to start the MCP on stdio.
+    |-
+    (config) => {
+      const env = {
+        URBIT_SHIP: config.urbitShip,
+        URBIT_CODE: config.urbitCode,
+        URBIT_HOST: config.urbitHost,
+        URBIT_PORT: String(config.urbitPort),
+        MCP_TRANSPORT: config.mcpTransport,
+      };
+      if (config.mcpTransport === 'http') {
+        env.PORT = String(config.port);
+      }
+      return {
+        command: 'node',
+        args: ['index.js'],
+        env,
+      };
+    }
+  exampleConfig:
+    urbitShip: rilfun-lidlen
+    urbitCode: hactes-radnup-lorbud-tinder
+    urbitHost: https://rilfun-lidlen.startram.io
+    urbitPort: "443"
+    mcpTransport: stdio
+    port: 3001
