@@ -2,6 +2,10 @@
 
 An MCP (Model Context Protocol) server that provides tools for interacting with Tlon agents.
 
+## Demo
+
+https://github.com/user-attachments/assets/aa5a8279-497a-4613-a12b-a6f2b46d04b6
+
 ## Features
 
 - **send-dm tool**: Send direct messages to other users
