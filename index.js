@@ -19,23 +19,23 @@ if (typeof global.document === "undefined") {
 // Only use normal console.log if explicitly in HTTP mode
 if (process.env.MCP_TRANSPORT !== "http") {
   const originalConsoleLog = console.log;
-  console.log = function() {
+  console.log = function () {
     console.error.apply(console, arguments);
   };
 }
 
 /**
  * Process environment variables to get configuration
- * 
+ *
  * @returns {Object} Configuration object with default values
  */
 function getConfig() {
   // Default configuration
   const defaults = {
-    ship: "zod",                            // Local development ship (without ~)
-    code: "lidlut-tabwed-pillex-ridrup",    // Default +code
-    host: "localhost",                      // Urbit host
-    port: "8080",                           // Urbit port (commonly 8080 for local development)
+    ship: "zod", // Local development ship (without ~)
+    code: "lidlut-tabwed-pillex-ridrup", // Default +code
+    host: "localhost", // Urbit host
+    port: "8080", // Urbit port (commonly 8080 for local development)
   };
 
   // Get configuration from environment or defaults
@@ -47,24 +47,24 @@ function getConfig() {
   };
 
   // Clean up ship name (remove ~ if present)
-  config.ship = config.ship.replace(/^~/, '');
+  config.ship = config.ship.replace(/^~/, "");
 
   // Construct the full URL
   config.url = `http://${config.host}:${config.port}`;
-  
+
   return config;
 }
 
 /**
  * Patched connect method for Urbit API
- * 
+ *
  * This patch extends the default connect method to handle authentication via HTTP.
  * It performs the following steps:
  * 1. Makes a login request to the Urbit ship with the provided password
  * 2. Extracts the authentication cookie from the response
  * 3. Parses the node ID from the cookie if not already set
  * 4. Retrieves the ship name information
- * 
+ *
  * The original connect method is preserved below and this patched version
  * is used instead when connecting to an Urbit ship.
  */
@@ -95,7 +95,7 @@ Urbit.prototype.connect = async function patchedConnect() {
 
 /**
  * Sends a direct message to another ship
- * 
+ *
  * @param {Object} api - The Urbit API instance
  * @param {string} fromShip - The sender's ship name
  * @param {string} toShip - The recipient's ship name
@@ -104,7 +104,7 @@ Urbit.prototype.connect = async function patchedConnect() {
  */
 async function sendDm(api, fromShip, toShip, text) {
   console.log(`Sending DM to ${toShip}...`);
-  
+
   try {
     // Verify API connection is still active with a more reliable method
     console.log("Verifying connection status...");
@@ -115,7 +115,7 @@ async function sendDm(api, fromShip, toShip, text) {
     } catch (connErr) {
       console.error("Connection check failed:", connErr);
       console.log("Attempting to reconnect...");
-      
+
       // Re-authenticate
       try {
         await api.connect();
@@ -125,7 +125,7 @@ async function sendDm(api, fromShip, toShip, text) {
         throw new Error("Connection to ship lost and reconnection failed");
       }
     }
-  
+
     const story = [
       {
         inline: [text],
@@ -155,9 +155,9 @@ async function sendDm(api, fromShip, toShip, text) {
         delta,
       },
     };
-    
+
     console.log(`Sending message via poke to ${toShip}...`);
-    
+
     await api.poke({
       app: "chat",
       mark: "chat-dm-action",
@@ -165,20 +165,18 @@ async function sendDm(api, fromShip, toShip, text) {
       onError: (e) => {
         console.error("Poke error:", e);
         throw e;
-      }
+      },
     });
-    
+
     console.log("DM sent successfully!");
     // Return message and recipient in the content array format FastMCP expects
     return {
-      content: [
-        { type: "text", text: `Message sent to ${toShip}` }
-      ]
+      content: [{ type: "text", text: `Message sent to ${toShip}` }],
     };
   } catch (error) {
     console.error("Error sending DM:", error);
     let errorMessage = error.message || "Unknown error occurred";
-    
+
     if (errorMessage.includes("PUT channel")) {
       errorMessage = `Failed to communicate with the ship. Please verify:
 1. Your ship is still running at ${api.url}
@@ -186,11 +184,60 @@ async function sendDm(api, fromShip, toShip, text) {
 3. The recipient (${toShip}) is valid and can receive DMs
 4. Try restarting the server if the issue persists`;
     }
-    
-    return { 
+
+    return {
+      content: [{ type: "text", text: `Error: ${errorMessage}` }],
+    };
+  }
+}
+
+/**
+ * Reads the history of a direct message channel with another ship.
+ *
+ * @param {Object} api - The Urbit API instance
+ * @param {string} fromShip - The caller's ship name (with ~)
+ * @param {string} toShip - The counterpart ship name (with ~)
+ * @param {number} [count=100] - How many messages to retrieve (max 500)
+ * @returns {Promise<Object>} FastMCP formatted response containing DM history
+ */
+async function readDmHistory(api, fromShip, toShip, count = 100) {
+  console.log(`Fetching last ${count} message(s) with ${toShip}...`);
+
+  const cappedCount = Math.max(1, Math.min(count, 500));
+
+  try {
+    try {
+      await api.getOurName();
+    } catch (connErr) {
+      console.error("Connection check failed while reading history:", connErr);
+      await api.connect();
+    }
+
+    const scryPath = `/dm/${toShip}/writs/newest/${cappedCount}/light`;
+    console.log(`Scrying chat app path: ${scryPath}`);
+
+    const history = await api.scry({
+      app: "chat",
+      path: scryPath,
+    });
+
+    return {
       content: [
-        { type: "text", text: `Error: ${errorMessage}` }
-      ]
+        {
+          type: "text",
+          text: JSON.stringify(history),
+        },
+      ],
+    };
+  } catch (error) {
+    console.error("Error fetching DM history:", error);
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Error: ${error.message || "Unknown error occurred"}`,
+        },
+      ],
     };
   }
 }
@@ -201,10 +248,10 @@ async function sendDm(api, fromShip, toShip, text) {
 async function startMcpServer() {
   const config = getConfig();
   const shipName = `~${config.ship}`;
-  
+
   console.log(`Setting up MCP server for Tlon at ${config.url}`);
   console.log(`Authenticating as ${shipName}`);
-  
+
   let api;
   try {
     api = await Urbit.authenticate({
@@ -213,10 +260,10 @@ async function startMcpServer() {
       code: config.code,
       verbose: true,
     });
-    
+
     // Set a longer timeout value for API calls
     api.requestTimeout = 30000; // 30 seconds
-    
+
     console.log("Successfully authenticated to ship");
   } catch (error) {
     console.error("Failed to authenticate to ship:", error);
@@ -224,9 +271,13 @@ async function startMcpServer() {
       console.error("-----------------------------------------------------");
       console.error("Authentication Error: Failed to PUT channel");
       console.error("Check the following:");
-      console.error(`1. Is your Urbit ship (${shipName}) running at ${config.url}?`);
+      console.error(
+        `1. Is your Urbit ship (${shipName}) running at ${config.url}?`
+      );
       console.error(`2. Is the +code (${config.code}) correct?`);
-      console.error(`3. Try accessing ${config.url} in a browser to verify connectivity`);
+      console.error(
+        `3. Try accessing ${config.url} in a browser to verify connectivity`
+      );
       console.error("-----------------------------------------------------");
     }
     process.exit(1);
@@ -234,7 +285,7 @@ async function startMcpServer() {
 
   // Create and configure the MCP server
   const server = new FastMCP({
-    name: "Tlon MCP Server", 
+    name: "Tlon MCP Server",
     version: "0.0.1",
   });
 
@@ -244,31 +295,74 @@ async function startMcpServer() {
     description: "Send a direct message to another ship",
     parameters: z.object({
       recipient: z.string().describe("Recipient ship name (with or without ~)"),
-      message: z.string().describe("Message text to send")
+      message: z.string().describe("Message text to send"),
     }),
     execute: async (params) => {
       // Clean recipient (remove ~ if present)
-      const recipient = `~${params.recipient.replace(/^~/, '')}`;
-      
+      const recipient = `~${params.recipient.replace(/^~/, "")}`;
+
       try {
         const result = await sendDm(api, shipName, recipient, params.message);
         return result;
       } catch (error) {
         console.error("Error sending DM:", error);
-        return { 
+        return {
           content: [
-            { type: "text", text: `Error: ${error.message || "Unknown error occurred"}` }
-          ]
+            {
+              type: "text",
+              text: `Error: ${error.message || "Unknown error occurred"}`,
+            },
+          ],
         };
       }
-    }
+    },
+  });
+
+  // Add read-dm-history tool
+  server.addTool({
+    name: "read-dm-history",
+    description:
+      "Read the latest messages from a direct message channel with another ship",
+    parameters: z
+      .object({
+        correspondent: z
+          .string()
+          .describe("Correspondent ship name (with or without ~)"),
+        count: z
+          .number()
+          .int()
+          .positive()
+          .max(500)
+          .default(100)
+          .describe("Number of messages to fetch (default 100)"),
+      })
+      .strict(),
+    execute: async (params) => {
+      const correspondent = `~${params.correspondent.replace(/^~/, "")}`;
+      const count = params.count ?? 100;
+
+      try {
+        const result = await readDmHistory(api, shipName, correspondent, count);
+        return result;
+      } catch (error) {
+        console.error("Error reading DM history:", error);
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error: ${error.message || "Unknown error occurred"}`,
+            },
+          ],
+        };
+      }
+    },
   });
 
   // Start the server with a basic default configuration
   // Use HTTP transport only if explicitly requested, otherwise default to stdio
   const useHttp = process.env.MCP_TRANSPORT === "http";
   const port = parseInt(process.env.PORT || "3001");
-  
+
   try {
     if (useHttp) {
       // Set up SSE transport according to the documentation
@@ -276,14 +370,14 @@ async function startMcpServer() {
         transportType: "sse",
         sse: {
           endpoint: "/sse",
-          port
-        }
+          port,
+        },
       });
       console.log(`Tlon MCP server started on port ${port}, endpoint: /sse`);
     } else {
       // Default to stdio with no options
       await server.start({
-        transportType: "stdio"
+        transportType: "stdio",
       });
       console.log("Tlon MCP server started in stdio mode");
     }
@@ -294,8 +388,8 @@ async function startMcpServer() {
   }
 
   // Graceful shutdown
-  process.on('SIGINT', async () => {
-    console.log('Shutting down MCP server...');
+  process.on("SIGINT", async () => {
+    console.log("Shutting down MCP server...");
     try {
       await server.stop();
       await api.delete();
@@ -315,7 +409,4 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 }
 
 // Export for use as a module in other scripts
-export {
-  sendDm,
-  startMcpServer
-};
+export { sendDm, readDmHistory, startMcpServer };
