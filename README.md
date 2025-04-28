@@ -1,15 +1,15 @@
 # Tlon MCP Server
 
-An MCP (Model Context Protocol) server that provides tools for interacting with Tlon's Urbit services.
+An MCP (Model Context Protocol) server that provides tools for interacting with Tlon agents.
 
 ## Features
 
-- **send-dm tool**: Send direct messages to Urbit ships
+- **send-dm tool**: Send direct messages to other users
 
 ## Prerequisites
 
 - Node.js (v16+)
-- Access to an Urbit ship
+- A running Urbit ship
 
 ## Installation
 
