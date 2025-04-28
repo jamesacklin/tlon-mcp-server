@@ -32,10 +32,10 @@ if (process.env.MCP_TRANSPORT !== "http") {
 function getConfig() {
   // Default configuration
   const defaults = {
-    ship: "zod", // Local development ship (without ~)
-    code: "lidlut-tabwed-pillex-ridrup", // Default +code
-    host: "localhost", // Urbit host
-    port: "8080", // Urbit port (commonly 8080 for local development)
+    ship: "rilfun-lidlen", // Local development ship (without ~)
+    code: "hactes-radnup-lorbud-tinder", // Default +code
+    host: "https://rilfun-lidlen.startram.io", // Urbit host
+    port: "443", // Urbit port (commonly 8080 for local development)
   };
 
   // Get configuration from environment or defaults
@@ -251,6 +251,251 @@ async function readDmHistory(api, fromShip, toShip, count = 100) {
 }
 
 /**
+ * Retrieves the full contact list from the %contacts agent.
+ *
+ * @param {Object} api - The Urbit API instance
+ * @returns {Promise<Object>} Raw contacts map returned from the ship
+ */
+async function getContacts(api) {
+  try {
+    const contacts = await api.scry({
+      app: "contacts",
+      path: "/all",
+    });
+    return contacts;
+  } catch (error) {
+    console.error("Error fetching contacts:", error);
+    throw new Error(error.message || "Failed to fetch contacts");
+  }
+}
+
+/**
+ * Formats contacts data into a more user-friendly structure
+ *
+ * @param {Object} contacts - Raw contacts data from the contacts agent
+ * @returns {Object} Formatted contacts with easier access patterns
+ */
+function formatContacts(contacts) {
+  const formatted = {
+    byShip: {},
+    byNickname: {},
+    byEmail: {},
+    byPhone: {},
+  };
+
+  // Process each contact
+  Object.entries(contacts || {}).forEach(([ship, data]) => {
+    if (!data) return; // Skip if data is null or undefined
+
+    const cleanShip = ship.startsWith("~") ? ship : `~${ship}`;
+
+    // Store basic info by ship
+    formatted.byShip[cleanShip] = {
+      ...data,
+      ship: cleanShip,
+    };
+
+    // Create lookup indexes for common fields - check if properties exist first
+    if (data.nickname && typeof data.nickname === "string") {
+      formatted.byNickname[data.nickname.toLowerCase()] = cleanShip;
+    }
+
+    if (data.email && typeof data.email === "string") {
+      formatted.byEmail[data.email.toLowerCase()] = cleanShip;
+    }
+
+    if (data.phone && typeof data.phone === "string") {
+      formatted.byPhone[data.phone] = cleanShip;
+    }
+  });
+
+  return formatted;
+}
+
+/**
+ * Formats DM history data into a more readable structure
+ *
+ * @param {Object} history - Raw DM history data from the chat agent
+ * @param {Object} contacts - Formatted contacts data for nickname lookup
+ * @param {string} ownShipName - The name of our own ship (with ~)
+ * @returns {Array} Array of formatted messages
+ */
+function formatDmHistory(history, contacts, ownShipName) {
+  const messages = [];
+
+  console.log(
+    `Formatting DM history with ${Object.keys(history || {}).length} messages`
+  );
+  console.log(`Own ship: ${ownShipName}`);
+
+  // Process each message in the history
+  Object.entries(history || {}).forEach(([id, data]) => {
+    const { memo } = data;
+    if (!memo) return;
+
+    // Get sender nickname if available
+    const sender = memo.author;
+    const senderShip = sender.startsWith("~") ? sender : `~${sender}`;
+
+    // Skip processing if the senderShip doesn't have a value
+    if (!senderShip) {
+      console.log(`Skipping message with invalid sender: ${sender}`);
+      return;
+    }
+
+    // Important: Skip incorrect self-identification
+    // Don't use a nickname for our own ship to avoid confusion
+    let senderName;
+    if (senderShip === ownShipName) {
+      senderName = ownShipName; // Always use ID for our own messages
+      console.log(`Message from myself (${ownShipName})`);
+    } else {
+      // For other senders, try to get their nickname
+      const senderContact = contacts?.byShip[senderShip];
+      senderName = senderContact?.nickname || senderShip;
+      console.log(`Message from ${senderName} (${senderShip})`);
+    }
+
+    // Format the content
+    let content = "";
+    if (memo.content && Array.isArray(memo.content)) {
+      // Extract text from nested inline content structure
+      content = memo.content
+        .map((block) => {
+          if (block.inline) {
+            return block.inline.join(" ");
+          }
+          return "";
+        })
+        .join("\n")
+        .trim();
+    }
+
+    messages.push({
+      id,
+      sender: senderName,
+      senderShip: senderShip,
+      content: content,
+      sent: new Date(memo.sent).toISOString(),
+      timestamp: memo.sent,
+    });
+  });
+
+  // Sort by timestamp, newest first
+  return messages.sort((a, b) => b.timestamp - a.timestamp);
+}
+
+/**
+ * Resolves a name or nickname to a ship ID
+ *
+ * @param {Object} api - The Urbit API instance
+ * @param {string} nameOrShip - Nickname or ship name (with or without ~)
+ * @param {string} ownShipName - The name of our own ship (with ~)
+ * @returns {Promise<string>} Resolved ship ID with ~ prefix
+ * @throws {Error} If the name cannot be resolved to a ship
+ */
+async function resolveShipName(api, nameOrShip, ownShipName) {
+  if (!nameOrShip) {
+    throw new Error("Name or ship ID is required");
+  }
+
+  // Case insensitive comparison for common names for "me"
+  const selfReferences = ["me", "myself", "i", "self"];
+  if (selfReferences.includes(nameOrShip.toLowerCase())) {
+    console.log(`Self-reference "${nameOrShip}" resolves to ${ownShipName}`);
+    return ownShipName;
+  }
+
+  // If it starts with ~, treat as a ship ID
+  if (nameOrShip.startsWith("~")) {
+    return nameOrShip;
+  }
+
+  try {
+    // Get raw contacts data
+    const rawContacts = await getContacts(api);
+
+    // Log for debugging
+    console.log(`Looking up contact nickname: "${nameOrShip}"`);
+    console.log(
+      `Raw contacts data structure: ${typeof rawContacts}, keys: ${
+        Object.keys(rawContacts || {}).length
+      }`
+    );
+
+    // Format contacts and search by nickname (case insensitive)
+    const contacts = formatContacts(rawContacts);
+    const lookupName = nameOrShip.toLowerCase();
+
+    // Log formatted structure
+    console.log(
+      `Formatted nicknames: ${Object.keys(contacts.byNickname).join(", ")}`
+    );
+
+    // Important check: make sure we're not identifying ourselves with a nickname
+    for (const [nickname, shipId] of Object.entries(contacts.byNickname)) {
+      if (shipId === ownShipName) {
+        console.log(
+          `Warning: Found nickname "${nickname}" for our own ship ${ownShipName}`
+        );
+        // If we're looking up our own nickname, return our ship
+        if (nickname.toLowerCase() === lookupName) {
+          console.log(
+            `Self-reference via nickname "${nameOrShip}" resolves to ${ownShipName}`
+          );
+          return ownShipName;
+        }
+      }
+    }
+
+    const ship = contacts.byNickname[lookupName];
+
+    if (!ship) {
+      // Direct debug logging of contacts for troubleshooting
+      console.log("Available contacts:");
+      Object.entries(rawContacts || {}).forEach(([ship, data]) => {
+        console.log(`  Ship: ${ship}, Nickname: ${data?.nickname || "none"}`);
+      });
+
+      throw new Error(
+        `Could not find a contact with the nickname "${nameOrShip}"`
+      );
+    }
+
+    // Final safety check: verify we're not sending to ourselves
+    if (ship === ownShipName) {
+      console.log(
+        `Warning: "${nameOrShip}" resolves to our own ship ${ownShipName}`
+      );
+    }
+
+    console.log(`Resolved: "${nameOrShip}" → ${ship}`);
+    return ship;
+  } catch (error) {
+    console.error(`Error resolving name "${nameOrShip}":`, error);
+    throw error;
+  }
+}
+
+/**
+ * Creates a standard error response for MCP tools
+ *
+ * @param {Error} error - The error object
+ * @returns {Object} Formatted MCP response with error message
+ */
+function createErrorResponse(error) {
+  console.error("Error:", error);
+  return {
+    content: [
+      {
+        type: "text",
+        text: `Error: ${error.message || "Unknown error occurred"}`,
+      },
+    ],
+  };
+}
+
+/**
  * Set up and run the MCP server with the send-dm tool
  */
 async function startMcpServer() {
@@ -297,45 +542,46 @@ async function startMcpServer() {
     version: "0.0.1",
   });
 
-  // Add send-dm tool
+  // Modify send-dm tool to handle nicknames
   server.addTool({
     name: "send-dm",
-    description: "Send a direct message to another ship",
+    description: "Send a direct message to another ship or nickname",
     parameters: z.object({
-      recipient: z.string().describe("Recipient ship name (with or without ~)"),
+      recipient: z
+        .string()
+        .describe("Recipient ship name (with ~) or nickname"),
       message: z.string().describe("Message text to send"),
     }),
     execute: async (params) => {
-      // Clean recipient (remove ~ if present)
-      const recipient = `~${params.recipient.replace(/^~/, "")}`;
-
       try {
+        let recipient;
+
+        // If it starts with ~, use it directly as a ship ID
+        if (params.recipient.startsWith("~")) {
+          recipient = params.recipient;
+        } else {
+          // Try to resolve as a nickname, passing our ship name
+          recipient = await resolveShipName(api, params.recipient, shipName);
+        }
+
         const result = await sendDm(api, shipName, recipient, params.message);
         return result;
       } catch (error) {
-        console.error("Error sending DM:", error);
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Error: ${error.message || "Unknown error occurred"}`,
-            },
-          ],
-        };
+        return createErrorResponse(error);
       }
     },
   });
 
-  // Add read-dm-history tool
+  // Modify read-dm-history tool to handle nicknames
   server.addTool({
     name: "read-dm-history",
     description:
-      "Read the latest messages from a direct message channel with another ship",
+      "Read the latest messages from a direct message channel with another ship or nickname",
     parameters: z
       .object({
         correspondent: z
           .string()
-          .describe("Correspondent ship name (with or without ~)"),
+          .describe("Correspondent ship name (with ~) or nickname"),
         count: z
           .number()
           .int()
@@ -343,25 +589,143 @@ async function startMcpServer() {
           .max(500)
           .default(100)
           .describe("Number of messages to fetch (default 100)"),
+        format: z
+          .enum(["raw", "formatted"])
+          .default("formatted")
+          .describe(
+            "Format of returned data: 'raw' for original JSON, 'formatted' for user-friendly structure"
+          ),
       })
       .strict(),
     execute: async (params) => {
-      const correspondent = `~${params.correspondent.replace(/^~/, "")}`;
-      const count = params.count ?? 100;
-
       try {
-        const result = await readDmHistory(api, shipName, correspondent, count);
-        return result;
+        console.log(
+          `Processing read-dm-history request for: "${params.correspondent}"`
+        );
+
+        let correspondent;
+
+        // If it starts with ~, use it directly as a ship ID
+        if (params.correspondent.startsWith("~")) {
+          correspondent = params.correspondent;
+          console.log(`Using ship ID directly: ${correspondent}`);
+        } else {
+          // Try to resolve as a nickname
+          console.log(
+            `Attempting to resolve nickname: "${params.correspondent}"`
+          );
+          correspondent = await resolveShipName(
+            api,
+            params.correspondent,
+            shipName
+          );
+          console.log(`Resolved nickname to ship: ${correspondent}`);
+        }
+
+        const count = params.count ?? 100;
+
+        // Get raw DM history
+        console.log(
+          `Fetching DM history with ${correspondent}, count: ${count}`
+        );
+        const rawResponse = await readDmHistory(
+          api,
+          shipName,
+          correspondent,
+          count
+        );
+
+        // Return raw data if requested
+        if (params.format === "raw") {
+          return rawResponse;
+        }
+
+        try {
+          // Format the history with contact information
+          const rawHistory = JSON.parse(rawResponse.content[0].text);
+          const rawContacts = await getContacts(api);
+          const contacts = formatContacts(rawContacts);
+
+          // Pass our own ship name to prevent misidentification
+          const formattedHistory = formatDmHistory(
+            rawHistory,
+            contacts,
+            shipName
+          );
+
+          // Add metadata about the conversation
+          const conversationInfo = {
+            correspondent: correspondent,
+            correspondentNickname:
+              contacts.byShip[correspondent]?.nickname || null,
+            messageCount: formattedHistory.length,
+            startDate:
+              formattedHistory.length > 0
+                ? formattedHistory[formattedHistory.length - 1].sent
+                : null,
+            endDate:
+              formattedHistory.length > 0 ? formattedHistory[0].sent : null,
+          };
+
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(
+                  {
+                    meta: conversationInfo,
+                    messages: formattedHistory,
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        } catch (formatError) {
+          console.error("Error formatting history:", formatError);
+          // Fall back to raw response if formatting fails
+          return rawResponse;
+        }
       } catch (error) {
-        console.error("Error reading DM history:", error);
+        return createErrorResponse(error);
+      }
+    },
+  });
+
+  // Update list-contacts tool
+  server.addTool({
+    name: "list-contacts",
+    description:
+      "Retrieve all saved contacts including ship identifiers and nicknames",
+    parameters: z
+      .object({
+        format: z
+          .enum(["raw", "formatted"])
+          .default("formatted")
+          .describe(
+            "Format of returned data: 'raw' for original JSON, 'formatted' for user-friendly structure"
+          ),
+      })
+      .strict(),
+    execute: async (params) => {
+      try {
+        const rawContacts = await getContacts(api);
+
+        // Return formatted or raw data based on parameter
+        const responseData =
+          params.format === "raw" ? rawContacts : formatContacts(rawContacts);
+
         return {
           content: [
             {
               type: "text",
-              text: `Error: ${error.message || "Unknown error occurred"}`,
+              text: JSON.stringify(responseData, null, 2),
             },
           ],
         };
+      } catch (error) {
+        return createErrorResponse(error);
       }
     },
   });
