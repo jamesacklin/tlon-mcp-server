@@ -15,6 +15,15 @@ if (typeof global.document === "undefined") {
   };
 }
 
+// Redirect console.log to stderr in stdio mode to avoid interfering with MCP protocol
+// Only use normal console.log if explicitly in HTTP mode
+if (process.env.MCP_TRANSPORT !== "http") {
+  const originalConsoleLog = console.log;
+  console.log = function() {
+    console.error.apply(console, arguments);
+  };
+}
+
 /**
  * Process environment variables to get configuration
  * 
@@ -132,7 +141,12 @@ async function sendDm(api, fromShip, toShip, text) {
     json: action,
   });
   console.log("DM sent!");
-  return { success: true, message: `Message sent to ${toShip}` };
+  // Return message and recipient in the content array format FastMCP expects
+  return {
+    content: [
+      { type: "text", text: `Message sent to ${toShip}` }
+    ]
+  };
 }
 
 /**
@@ -142,7 +156,7 @@ async function startMcpServer() {
   const config = getConfig();
   const shipName = `~${config.ship}`;
   
-  console.log(`Setting up MCP server for Tlon's Urbit ship at ${config.url}`);
+  console.log(`Setting up MCP server for Tlon at ${config.url}`);
   
   let api;
   try {
@@ -152,22 +166,22 @@ async function startMcpServer() {
       code: config.code,
       verbose: true,
     });
-    console.log("Successfully authenticated to Urbit ship");
+    console.log("Successfully authenticated to ship");
   } catch (error) {
-    console.error("Failed to authenticate to Urbit ship:", error);
+    console.error("Failed to authenticate to ship:", error);
     process.exit(1);
   }
 
   // Create and configure the MCP server
   const server = new FastMCP({
-    name: "Tlon Urbit Tools", 
-    version: "1.0.0",
+    name: "Tlon MCP Server", 
+    version: "0.0.1",
   });
 
   // Add send-dm tool
   server.addTool({
     name: "send-dm",
-    description: "Send a direct message to an Urbit ship",
+    description: "Send a direct message to another ship",
     parameters: z.object({
       recipient: z.string().describe("Recipient ship name (with or without ~)"),
       message: z.string().describe("Message text to send")
@@ -182,14 +196,16 @@ async function startMcpServer() {
       } catch (error) {
         console.error("Error sending DM:", error);
         return { 
-          success: false, 
-          error: error.message || "Unknown error occurred"
+          content: [
+            { type: "text", text: `Error: ${error.message || "Unknown error occurred"}` }
+          ]
         };
       }
     }
   });
 
   // Start the server with a basic default configuration
+  // Use HTTP transport only if explicitly requested, otherwise default to stdio
   const useHttp = process.env.MCP_TRANSPORT === "http";
   const port = parseInt(process.env.PORT || "3001");
   
