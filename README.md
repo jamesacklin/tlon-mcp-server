@@ -9,6 +9,7 @@ https://github.com/user-attachments/assets/765847b2-df40-44c0-bfd3-c23eb609bbd8
 ## Features
 
 - **send-dm tool**: Send direct messages to other users
+- **read-dm-history tool**: Retrieve recent messages from a direct-message channel
 
 ## Prerequisites
 
@@ -31,14 +32,14 @@ npm install
 
 Configure the server using environment variables:
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `URBIT_SHIP` | Your Urbit ship name (without ~) | zod |
-| `URBIT_CODE` | Your Urbit +code | lidlut-tabwed-pillex-ridrup |
-| `URBIT_HOST` | Urbit host | localhost |
-| `URBIT_PORT` | Urbit port | 8080 |
-| `PORT` | MCP server port (HTTP mode only) | 3001 |
-| `MCP_TRANSPORT` | Transport type (http or stdio) | stdio |
+| Variable        | Description                      | Default                     |
+| --------------- | -------------------------------- | --------------------------- |
+| `URBIT_SHIP`    | Your Urbit ship name (without ~) | zod                         |
+| `URBIT_CODE`    | Your Urbit +code                 | lidlut-tabwed-pillex-ridrup |
+| `URBIT_HOST`    | Urbit host                       | localhost                   |
+| `URBIT_PORT`    | Urbit port                       | 8080                        |
+| `PORT`          | MCP server port (HTTP mode only) | 3001                        |
+| `MCP_TRANSPORT` | Transport type (http or stdio)   | stdio                       |
 
 ## Usage
 
@@ -93,8 +94,18 @@ Send a message to ~sampel-palnet
 Sends a direct message to another ship.
 
 Parameters:
+
 - `recipient`: The recipient's ship name (with or without ~)
 - `message`: The message text to send
+
+### read-dm-history
+
+Fetches the latest messages from a direct-message channel between your ship and another.
+
+Parameters:
+
+- `correspondent`: The other ship's name (with or without ~)
+- `count` _(optional)_: How many messages to return (default 100, max 500)
 
 ## License
 
