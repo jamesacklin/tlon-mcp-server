@@ -1,0 +1,15 @@
+{
+  "name": "tlon-node",
+  "version": "0.0.1",
+  "description": "A Node.js library for interacting with Tlon",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "James Acklin <james@ackl.in>",
+  "license": "MIT",
+  "dependencies": {
+    "@urbit/aura": "^2.0.1",
+    "@urbit/http-api": "^3.2.0-dev"
+  }
+}
