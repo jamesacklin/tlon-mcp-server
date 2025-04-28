@@ -50,7 +50,15 @@ function getConfig() {
   config.ship = config.ship.replace(/^~/, "");
 
   // Construct the full URL
-  config.url = `http://${config.host}:${config.port}`;
+  // If host already contains a scheme (http:// or https://), respect it.
+  // Otherwise, infer scheme from port (443 => https, everything else => http).
+  if (/^https?:\/\//.test(config.host)) {
+    // host already includes protocol and possibly port
+    config.url = config.host;
+  } else {
+    const scheme = config.port === "443" ? "https" : "http";
+    config.url = `${scheme}://${config.host}:${config.port}`;
+  }
 
   return config;
 }
